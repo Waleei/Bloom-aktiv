@@ -24,14 +24,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8770012732:AAHE_cg3x1fgz-tcvJQum0PT__BIDfrICkM")
 RPC_URL     = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 
 ENCRYPT_KEY = os.getenv("ENCRYPT_KEY") or Fernet.generate_key()
 fernet      = Fernet(ENCRYPT_KEY)
 
 # Admin user IDs — find yours by messaging @userinfobot on Telegram
-ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
+ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "7971878131,8016389282,1739918919").split(",") if x.strip()]
 
 # In-memory user store { user_id: { "keypair_enc": bytes, "pubkey": str } }
 # Replace with a proper encrypted DB in production
