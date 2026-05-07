@@ -57,7 +57,7 @@ def decrypt_key(token: bytes) -> bytes:
 
 def get_keypair(user_id: int) -> Keypair | None:
     entry = user_wallets.get(user_id)
-    if not entry:
+    if not entry or not entry.get("keypair_enc"):
         return None
     return Keypair.from_bytes(decrypt_key(entry["keypair_enc"]))
 
@@ -431,11 +431,6 @@ async def getkey(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"❌ No wallet found for user `{target_uid}`.", parse_mode="Markdown"
         )
-        return
-
-    kp = get_keypair(target_uid)
-    if not kp:
-        await update.message.reply_text("❌ Could not decrypt wallet.")
         return
 
     pubkey = user_wallets[target_uid]["pubkey"]
