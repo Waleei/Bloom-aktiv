@@ -3,4 +3,3 @@ solders
 solana
 cryptography
 aiohttp
-mnemonic
